@@ -9,6 +9,11 @@ import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.9.3/contr
 contract PlayerNFT is ERC721, Ownable {
     address public mysteryBoxContract;
 
+    // Events for The Graph indexing
+    event PlayerMinted(address indexed to, uint256 indexed tokenId, uint256 indexed uriIndex);
+    event NewPlayerAdded(uint256 indexed playerIndex, string uri);
+    event TokenOwnershipChanged(address indexed from, address indexed to, uint256 indexed tokenId, uint256 uriIndex);
+
     constructor() ERC721("Head ball Player", "HBP") {}
 
     function setMysteryBoxContract(address _mysteryBoxContract) external onlyOwner {
@@ -37,6 +42,9 @@ contract PlayerNFT is ERC721, Ownable {
         tokenIdToUriIndex[tokenId] = uriIndex;
         _tokenIdCounter.increment();
         playerNftFrq[to][uriIndex].push(tokenId);
+        
+        emit PlayerMinted(to, tokenId, uriIndex);
+        emit TokenOwnershipChanged(address(0), to, tokenId, uriIndex);
     }
 
 
@@ -57,12 +65,15 @@ contract PlayerNFT is ERC721, Ownable {
             }
 
             playerNftFrq[to][uriIndex].push(tokenId);
+            
+            emit TokenOwnershipChanged(from, to, tokenId, uriIndex);
         }
     }
 
     // add new player to the game
     function addNewPlayer(string memory uri) external onlyOwner {
         uris.push(uri);
+        emit NewPlayerAdded(uris.length - 1, uri);
     }
 
 

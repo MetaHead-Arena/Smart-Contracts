@@ -25,6 +25,7 @@ contract GameEngine is ConfirmedOwner, FunctionsClient, VRFConsumerBaseV2Plus {
     event MatchProcessed(address indexed player, uint256 matchID, bool won, uint256 boxIndex);
     event MatchRequestSent(address indexed player, uint256 matchID, bytes32 requestId);
     event MatchRequestFailed(address indexed player, uint256 matchID, string error);
+    event XPGained(address indexed player, uint256 totalXP);
     
     IGameToken public gameToken;
     IMysteryBox public mysteryBox;
@@ -167,6 +168,7 @@ contract GameEngine is ConfirmedOwner, FunctionsClient, VRFConsumerBaseV2Plus {
         
         gameToken.mint(player, gainCoins);
         
+        emit XPGained(player, playerXP[player]);        
         // Mystery Box reward
         if (curLevel > oldLevel) {
             uint256 vrfRequestId = s_vrfCoordinator.requestRandomWords(

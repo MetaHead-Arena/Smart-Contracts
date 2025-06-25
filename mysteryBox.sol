@@ -18,6 +18,13 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
     IERC20 public gameToken;
     IPlayerNFT public playerNFT;
     
+    // Events for The Graph indexing
+    event NewBox(address indexed buyer, uint256 indexed boxType);
+    event BoxOpened(address indexed opener, uint256 indexed requestId, uint256 indexed index);
+    
+    // Add mapping to store box opening results
+    mapping(uint256 => uint256) public boxResults; // requestId => playerIndex
+    
     // numOfBox [address] [type of box] = num of boxes 
     mapping(address => mapping(uint => uint)) public numOfBox;
     mapping(uint256 => address) public requestToSender;
@@ -56,14 +63,16 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
         require(gameToken.transferFrom(msg.sender, address(this), boxPrice[boxType]), "Transfer failed");
 
         numOfBox[msg.sender][boxType]++;
+        
+        emit NewBox(msg.sender, boxType);
     }
 
-    function openBox(uint boxType) external {
+    function openBox(uint boxType) external returns (uint256 requestId){
         require(boxType < 3, "Invalid box type");
         require(numOfBox[msg.sender][boxType] > 0, "You don't have any box of this type");
         numOfBox[msg.sender][boxType]--;
 
-        uint256 requestId = s_vrfCoordinator.requestRandomWords(
+        requestId = s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
                 keyHash: keyHash,
                 subId: s_subscriptionId,
@@ -80,6 +89,8 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
        
         requestToBoxType[requestId] = boxType;
         requestToSender[requestId] = msg.sender;
+        
+        return requestId;
     }
 
     function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
@@ -129,6 +140,10 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
         
         playerNFT.mintPlayer(user, index);
         
+        boxResults[requestId] = index;
+        
+        emit BoxOpened(user, requestId, index);
+        
         delete requestToSender[requestId];
         delete requestToBoxType[requestId];
     }
@@ -143,6 +158,8 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
     }
     function rewardBox(address to , uint boxType) external onlyGameEngineContract {
         numOfBox[to][boxType]++;
+        
+        emit NewBox(to, boxType);
     }
 
     function withdrawTokens(address to, uint256 amount) external onlyOwner {
@@ -155,5 +172,11 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
                 numOfBox[_address][2]
                 ];
     }
+    
+    // Get the result of a specific box opening by requestId
+    function getBoxResult(uint256 requestId) external view returns (uint256) {
+        return boxResults[requestId];
+    }
+        
 }
 

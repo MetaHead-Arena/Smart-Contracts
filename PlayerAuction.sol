@@ -31,8 +31,12 @@ contract PlayerAuction{
     IPlayerNFT public nft;
 
     event NewEnter(address indexed user, uint amount);
-    event AuctionFinished(address user, uint amount);
-    event Withdraw(address user, uint amount);
+    event AuctionFinished(address indexed winner, uint256 indexed nftID, uint256 amount);
+    event Withdraw(address indexed user, uint256 indexed nftID, uint256 amount);
+
+    // Additional events for The Graph indexing
+    event AuctionStarted(uint256 indexed nftID, address indexed manager, uint256 startPrice, uint256 endAt);
+    event BidPlaced(address indexed bidder, uint256 indexed nftID, uint256 amount, uint256 totalBid);
 
     constructor (address NTFaddres,address _gameToken,uint _nftID , uint _startPrice,uint _endAt,address msgSender){
         nft=IPlayerNFT(NTFaddres);
@@ -55,6 +59,7 @@ contract PlayerAuction{
     function start() external onlyOwner{
         nft.safeTransferFrom(manager, address(this),auctionData.nftID);
         auctionData.started=true;
+        emit AuctionStarted(auctionData.nftID, manager, auctionData.startPrice, auctionData.endAt);
     }
 
     function bid(uint amount ) external  {
@@ -75,6 +80,7 @@ contract PlayerAuction{
         auctionData.maxPrice=newTotal;
         auctionData.winner=msg.sender;
         emit NewEnter(msg.sender, amount);
+        emit BidPlaced(msg.sender, auctionData.nftID, amount, newTotal);
     }
 
     function end() external {
@@ -92,7 +98,7 @@ contract PlayerAuction{
             
             gameToken.transfer(manager, auctionData.maxPrice);
 
-            emit AuctionFinished(auctionData.winner, auctionData.maxPrice);
+            emit AuctionFinished(auctionData.winner, auctionData.nftID, auctionData.maxPrice);
         }
         else {
             nft.safeTransferFrom(address(this), manager, auctionData.nftID);
@@ -110,7 +116,7 @@ contract PlayerAuction{
         balances[msg.sender]=0;
 
         require(gameToken.transfer(msg.sender, amount), "Transfer failed");
-        emit Withdraw(msg.sender,amount);
+        emit Withdraw(msg.sender, auctionData.nftID, amount);
     }
 
     function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
