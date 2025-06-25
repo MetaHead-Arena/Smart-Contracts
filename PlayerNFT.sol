@@ -11,9 +11,9 @@ contract PlayerNFT is ERC721, Ownable {
 
     // Events for The Graph indexing
     event PlayerMinted(address indexed to, uint256 indexed tokenId, uint256 indexed uriIndex);
-    event NewPlayerAdded(uint256 indexed playerIndex, string uri);
     event TokenOwnershipChanged(address indexed from, address indexed to, uint256 indexed tokenId, uint256 uriIndex);
-
+    event NewPlayerAdded(uint256 indexed playerIndex, string uri);
+    
     constructor() ERC721("Head ball Player", "HBP") {}
 
     function setMysteryBoxContract(address _mysteryBoxContract) external onlyOwner {
@@ -23,9 +23,11 @@ contract PlayerNFT is ERC721, Ownable {
     // playerNftFrq [address][tokenNum 0->9] = array of owned token of id=[tokenNum]
     mapping (address => mapping(uint=>uint[])) public playerNftFrq;
     
-    mapping (uint => uint) tokenIdToUriIndex; // tokenId To player Index to handle URI
-    string[] public uris=["ipfs","ipfs","ipfs","ipfs","ipfs","ipfs","ipfs","ipfs","ipfs","ipfs"]; //ToDo fill with IPFS URI
 
+    mapping (uint => uint) tokenIdToUriIndex; // tokenId To player Index to handle URI
+    mapping (uint => uint) tokenIdToType;     // tokenId To player type  to handle URI
+    string[][3] public uris; // [0]-> common | [1]-> epic | [2]-> legendary
+    
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIdCounter;
 
@@ -34,12 +36,15 @@ contract PlayerNFT is ERC721, Ownable {
         _;
     }
 
-    function mintPlayer(address to, uint256 uriIndex) external onlyMysteryBox{
-        require(uriIndex < uris.length, "Invalid URI index");
+    function mintPlayer(address to,uint playerType, uint256 uriIndex) external onlyMysteryBox{
+        require(uriIndex < uris[playerType].length, "Invalid URI index");
 
         uint tokenId = _tokenIdCounter.current();
         _safeMint(to, tokenId);
+        
         tokenIdToUriIndex[tokenId] = uriIndex;
+        tokenIdToType[tokenId] = playerType;
+
         _tokenIdCounter.increment();
         playerNftFrq[to][uriIndex].push(tokenId);
         
@@ -71,9 +76,9 @@ contract PlayerNFT is ERC721, Ownable {
     }
 
     // add new player to the game
-    function addNewPlayer(string memory uri) external onlyOwner {
-        uris.push(uri);
-        emit NewPlayerAdded(uris.length - 1, uri);
+    function addNewPlayer(uint playerType,string memory uri) external onlyOwner {
+        uris[playerType].push(uri);
+        emit NewPlayerAdded(uris[playerType].length - 1, uri);
     }
 
 
@@ -84,12 +89,12 @@ contract PlayerNFT is ERC721, Ownable {
     // handling URI with ERC721 instead of useing ERC721URIStorage
     function tokenURI(uint tokenId) public view override returns (string memory) {
         require(_exists(tokenId), "URI query for nonexistent token");
-        return uris[tokenIdToUriIndex[tokenId]];
+        return uris[tokenIdToType[tokenId]][tokenIdToUriIndex[tokenId]];
     }
 
     // number of player
-    function totalURIs() external view returns (uint256) {
-        return uris.length;
+    function totalURIs(uint playerType) external view returns (uint256) {
+        return uris[playerType].length;
     }
 
     
@@ -110,5 +115,4 @@ contract PlayerNFT is ERC721, Ownable {
         return tokens[tokens.length - 1];
     }
 
-    
 }

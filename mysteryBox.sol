@@ -8,8 +8,8 @@ import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/shared/access/Confir
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.9.3/contracts/token/ERC20/IERC20.sol";
 
 interface IPlayerNFT {
-    function mintPlayer(address to, uint256 index) external;
-    function totalURIs() external view returns (uint256);
+    function mintPlayer(address to, uint playerType, uint256 index) external;
+    function totalURIs(uint playerType) external view returns (uint256);
 }
 
 
@@ -20,10 +20,10 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
     
     // Events for The Graph indexing
     event NewBox(address indexed buyer, uint256 indexed boxType);
-    event BoxOpened(address indexed opener, uint256 indexed requestId, uint256 indexed index);
+    event BoxOpened(address indexed opener, uint256 indexed requestId, uint256 playerType, uint256 playerIndex);
     
-    // Add mapping to store box opening results
-    mapping(uint256 => uint256) public boxResults; // requestId => playerIndex
+    // Add mapping to store box opening results (packed: playerType << 8 | playerIndex)
+    mapping(uint256 => uint256) public boxResults; // requestId => packed result
     
     // numOfBox [address] [type of box] = num of boxes 
     mapping(address => mapping(uint => uint)) public numOfBox;
@@ -36,7 +36,7 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
     uint256 public s_subscriptionId;
     uint32  public callbackGasLimit = 200000;
     uint16  public requestConfirmations = 3;
-    uint32  public numWords = 1;
+    uint32  public numWords = 2;
 
     constructor(
         address _gameToken,
@@ -97,52 +97,54 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
         address user = requestToSender[requestId];
         uint boxType = requestToBoxType[requestId];
         
-        uint256 index;
-        uint256 randomValue = randomWords[0] % 100;
+        uint256 playerType; // 0=common, 1=epic, 2=legendary
+        uint256 playerIndex;
+        uint256 randomBox = randomWords[0] % 100;
+        uint256 randomPlayer = randomWords[1] % 100;
         
+        // Determine rarity based on box type and randomBox
         if (boxType == 0) {
-            // 80% Common, 15% Epic, 5% Legendary
-            if (randomValue < 80) {
-                // Common NFTs (index 0-4)
-                index = randomValue % 5;
-            } else if (randomValue < 95) {
-                // Epic NFTs (index 5-7)
-                index = 5 + (randomValue % 3);
+            // Common Box: 80% Common, 15% Epic, 5% Legendary
+            if (randomBox < 80) {
+                playerType = 0; // Common
+            } else if (randomBox < 95) {
+                playerType = 1; // Epic
             } else {
-                // Legendary NFTs (index 8-9)
-                index = 8 + (randomValue % 2);
+                playerType = 2; // Legendary
             }
         } else if (boxType == 1) {
-            // 60% Common, 30% Epic, 10% Legendary
-            if (randomValue < 60) {
-                // Common NFTs (index 0-4)
-                index = randomValue % 5;
-            } else if (randomValue < 90) {
-                // Epic NFTs (index 5-7)
-                index = 5 + (randomValue % 3);
+            // Epic Box: 60% Common, 30% Epic, 10% Legendary
+            if (randomBox < 60) {
+                playerType = 0; // Common
+            } else if (randomBox < 90) {
+                playerType = 1; // Epic
             } else {
-                // Legendary NFTs (index 8-9)
-                index = 8 + (randomValue % 2);
+                playerType = 2; // Legendary
             }
         } else if (boxType == 2) {
-            // 40% Common, 40% Epic, 20% Legendary
-            if (randomValue < 40) {
-                // Common NFTs (index 0-4)
-                index = randomValue % 5;
-            } else if (randomValue < 80) {
-                // Epic NFTs (index 5-7)
-                index = 5 + (randomValue % 3);
+            // Legendary Box: 40% Common, 40% Epic, 20% Legendary
+            if (randomBox < 40) {
+                playerType = 0; // Common
+            } else if (randomBox < 80) {
+                playerType = 1; // Epic
             } else {
-                // Legendary NFTs (index 8-9)
-                index = 8 + (randomValue % 2);
+                playerType = 2; // Legendary
             }
         }
         
-        playerNFT.mintPlayer(user, index);
+        // Get random player from the determined rarity category
+        uint256 totalPlayersInCategory = playerNFT.totalURIs(playerType);
+        require(totalPlayersInCategory > 0, "No players available in this category");
         
-        boxResults[requestId] = index;
+        playerIndex = randomPlayer % totalPlayersInCategory;
         
-        emit BoxOpened(user, requestId, index);
+        // Mint the NFT
+        playerNFT.mintPlayer(user, playerType, playerIndex);
+        
+        // Store the result (now we store both playerType and playerIndex)
+        boxResults[requestId] = (playerType << 8) | playerIndex; // Pack both values
+        
+        emit BoxOpened(user, requestId, playerType, playerIndex);
         
         delete requestToSender[requestId];
         delete requestToBoxType[requestId];
@@ -175,7 +177,9 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
     
     // Get the result of a specific box opening by requestId
     function getBoxResult(uint256 requestId) external view returns (uint256) {
-        return boxResults[requestId];
+        return boxResults[requestId]; 
+        // playerType  = boxResults[requestId] >> 8
+        // playerIndex = boxResults[requestId] & 0xFF
     }
         
 }
