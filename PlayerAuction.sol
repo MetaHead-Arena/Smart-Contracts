@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.19;
 
 interface IPlayerNFT {
     function ownerOf(uint256 tokenId) external view returns (address);
@@ -57,6 +57,7 @@ contract PlayerAuction{
 
     // start after approve contract in Frontend
     function start() external onlyOwner{
+        require(!auctionData.started, "Auction already started");
         nft.safeTransferFrom(manager, address(this),auctionData.nftID);
         auctionData.started=true;
         emit AuctionStarted(auctionData.nftID, manager, auctionData.startPrice, auctionData.endAt);
@@ -90,7 +91,12 @@ contract PlayerAuction{
             "Auction is not finished yet"
         );
         require(!auctionData.finished, "Auction is already finished");
-        require(msg.sender == manager || msg.sender == auctionData.winner);
+        
+        // If auction ended naturally (time expired), anyone can call end()
+        // If manager wants to end early, only manager can call
+        if (block.timestamp < auctionData.endAt) {
+            require(msg.sender == manager, "Only manager can end auction early");
+        }
 
         auctionData.finished = true;
         if(auctionData.winner!=address(0)){

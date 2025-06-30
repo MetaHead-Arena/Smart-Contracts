@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.19;
+pragma solidity ^0.8.19;
+
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 
@@ -34,8 +35,8 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
 
     bytes32 public keyHash;
     uint256 public s_subscriptionId;
-    uint32  public callbackGasLimit = 200000;
-    uint16  public requestConfirmations = 3;
+    uint32  public callbackGasLimit = 500000;
+    uint16  public requestConfirmations = 1;
     uint32  public numWords = 2;
 
     constructor(
@@ -70,7 +71,6 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
     function openBox(uint boxType) external returns (uint256 requestId){
         require(boxType < 3, "Invalid box type");
         require(numOfBox[msg.sender][boxType] > 0, "You don't have any box of this type");
-        numOfBox[msg.sender][boxType]--;
 
         requestId = s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
@@ -86,7 +86,7 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
                 )
             })
         );
-       
+
         requestToBoxType[requestId] = boxType;
         requestToSender[requestId] = msg.sender;
         
@@ -97,11 +97,13 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
         address user = requestToSender[requestId];
         uint boxType = requestToBoxType[requestId];
         
+        require(numOfBox[user][boxType] > 0, "You don't have any box of this type");
+        numOfBox[user][boxType]--;
+
         uint256 playerType; // 0=common, 1=epic, 2=legendary
         uint256 playerIndex;
         uint256 randomBox = randomWords[0] % 100;
         uint256 randomPlayer = randomWords[1] % 100;
-        
         // Determine rarity based on box type and randomBox
         if (boxType == 0) {
             // Common Box: 80% Common, 15% Epic, 5% Legendary
@@ -140,7 +142,7 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
         
         // Mint the NFT
         playerNFT.mintPlayer(user, playerType, playerIndex);
-        
+
         // Store the result (now we store both playerType and playerIndex)
         boxResults[requestId] = (playerType << 8) | playerIndex; // Pack both values
         
@@ -164,8 +166,14 @@ contract MysteryBox is ConfirmedOwner , VRFConsumerBaseV2Plus {
         emit NewBox(to, boxType);
     }
 
-    function withdrawTokens(address to, uint256 amount) external onlyOwner {
-        gameToken.transfer(to, amount);
+    function withdrawTokens(address to) external onlyOwner {
+        require(to != address(0), "Invalid address");
+
+        uint256 balance = gameToken.balanceOf(address(this));
+        require(balance > 0, "No tokens to withdraw");
+
+        bool success = gameToken.transfer(to, balance);
+        require(success, "Transfer failed");
     }
 
     function getNumOfBox(address _address) external view returns (uint[3] memory) {
